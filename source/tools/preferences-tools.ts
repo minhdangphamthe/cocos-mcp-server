@@ -16,7 +16,8 @@ export class PreferencesTools implements ToolExecutor {
                         },
                         args: {
                             type: 'array',
-                            description: 'Additional arguments to pass to the tab'
+                                description: 'Additional arguments to pass to the tab',
+                                items: {}
                         }
                     }
                 }
