@@ -191,6 +191,7 @@ export class SceneAdvancedTools implements ToolExecutor {
                         },
                         args: {
                             type: 'array',
+                            items: {},
                             description: 'Method arguments',
                             default: []
                         }
@@ -214,6 +215,7 @@ export class SceneAdvancedTools implements ToolExecutor {
                         },
                         args: {
                             type: 'array',
+                            items: {},
                             description: 'Method arguments',
                             default: []
                         }
