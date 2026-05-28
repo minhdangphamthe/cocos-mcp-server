@@ -65,16 +65,29 @@ export const methods: { [key: string]: (...any: any) => any } = {
      * @en Update server settings
      * @zh Update server settings
      */
-    updateSettings(settings: MCPServerSettings) {
-        saveSettings(settings);
+    async updateSettings(settings: Partial<MCPServerSettings>) {
+        const previousSettings = mcpServer ? mcpServer.getSettings() : readSettings();
+        const wasRunning = mcpServer ? mcpServer.getStatus().running : false;
+        const updatedSettings = saveSettings({ ...previousSettings, ...settings });
+
+        // Updating auto-start or log preferences must not interrupt a running server.
+        if (mcpServer && wasRunning && previousSettings.port === updatedSettings.port) {
+            mcpServer.updateSettings(updatedSettings);
+            return { success: true, settings: updatedSettings };
+        }
+
         if (mcpServer) {
             mcpServer.stop();
-            mcpServer = new MCPServer(settings);
-            mcpServer.start();
-        } else {
-            mcpServer = new MCPServer(settings);
-            mcpServer.start();
         }
+
+        mcpServer = new MCPServer(updatedSettings);
+        mcpServer.updateEnabledTools(toolManager.getEnabledTools());
+
+        if (wasRunning) {
+            await mcpServer.start();
+        }
+
+        return { success: true, settings: updatedSettings };
     },
 
     /**

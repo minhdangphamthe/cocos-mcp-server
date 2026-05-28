@@ -2,7 +2,7 @@
 
 import { readFileSync } from 'fs-extra';
 import { join } from 'path';
-import { createApp, App, defineComponent, ref, computed, onMounted, watch, nextTick } from 'vue';
+import { createApp, App, defineComponent, ref, computed, onMounted } from 'vue';
 
 const panelDataMap = new WeakMap<any, App>();
 
@@ -90,6 +90,26 @@ module.exports = Editor.Panel.define({
                     const settingsChanged = ref(false);
                     
                                         // Methods
+                    const buildServerSettings = () => ({
+                        port: settings.value.port,
+                        autoStart: settings.value.autoStart,
+                        enableDebugLog: settings.value.debugLog,
+                        maxConnections: settings.value.maxConnections
+                    });
+
+                    const updateBooleanSetting = (key: 'autoStart' | 'debugLog') => {
+                        settings.value[key] = !settings.value[key];
+                        settingsChanged.value = true;
+                    };
+
+                    const updateNumberSetting = (key: 'port' | 'maxConnections', event: Event) => {
+                        const value = Number((event.target as HTMLInputElement).value);
+                        if (Number.isFinite(value)) {
+                            settings.value[key] = value;
+                            settingsChanged.value = true;
+                        }
+                    };
+
                     const switchTab = (tabName: string) => {
                         activeTab.value = tabName;
                         if (tabName === 'tools') {
@@ -103,13 +123,7 @@ module.exports = Editor.Panel.define({
                                 await Editor.Message.request('cocos-mcp-server', 'stop-server');
                             } else {
                                 // Use the current panel settings when starting the server
-                                const currentSettings = {
-                                    port: settings.value.port,
-                                    autoStart: settings.value.autoStart,
-                                    enableDebugLog: settings.value.debugLog,
-                                    maxConnections: settings.value.maxConnections
-                                };
-                                await Editor.Message.request('cocos-mcp-server', 'update-settings', currentSettings);
+                                await Editor.Message.request('cocos-mcp-server', 'update-settings', buildServerSettings());
                                 await Editor.Message.request('cocos-mcp-server', 'start-server');
                             }
                             console.log('[Vue App] Server toggled');
@@ -120,15 +134,7 @@ module.exports = Editor.Panel.define({
                     
                     const saveSettings = async () => {
                         try {
-                            // Create a plain object to avoid clone errors
-                            const settingsData = {
-                                port: settings.value.port,
-                                autoStart: settings.value.autoStart,
-                                debugLog: settings.value.debugLog,
-                                maxConnections: settings.value.maxConnections
-                            };
-                            
-                            const result = await Editor.Message.request('cocos-mcp-server', 'update-settings', settingsData);
+                            const result = await Editor.Message.request('cocos-mcp-server', 'update-settings', buildServerSettings());
                             console.log('[Vue App] Save settings result:', result);
                             settingsChanged.value = false;
                         } catch (error) {
@@ -283,13 +289,6 @@ module.exports = Editor.Panel.define({
                     
 
                     
-                    // Watch for settings changes
-                    watch(settings, () => {
-                        settingsChanged.value = true;
-                    }, { deep: true });
-                    
-
-                    
                     // Load data when the component mounts
                     onMounted(async () => {
                         // Load tool manager state
@@ -297,19 +296,19 @@ module.exports = Editor.Panel.define({
                         
                         // Load settings from the server status
                         try {
-                            const serverStatus = await Editor.Message.request('cocos-mcp-server', 'get-server-status');
-                            if (serverStatus && serverStatus.settings) {
+                            const initialStatus = await Editor.Message.request('cocos-mcp-server', 'get-server-status');
+                            if (initialStatus && initialStatus.settings) {
                                 settings.value = {
-                                    port: serverStatus.settings.port || 3000,
-                                    autoStart: serverStatus.settings.autoStart || false,
-                                    debugLog: serverStatus.settings.enableDebugLog || false,
-                                    maxConnections: serverStatus.settings.maxConnections || 10
+                                    port: initialStatus.settings.port ?? 3000,
+                                    autoStart: initialStatus.settings.autoStart ?? false,
+                                    debugLog: initialStatus.settings.enableDebugLog ?? initialStatus.settings.debugLog ?? false,
+                                    maxConnections: initialStatus.settings.maxConnections ?? 10
                                 };
-                                console.log('[Vue App] Server settings loaded from status:', serverStatus.settings);
-                            } else if (serverStatus && serverStatus.port) {
+                                console.log('[Vue App] Server settings loaded from status:', initialStatus.settings);
+                            } else if (initialStatus && initialStatus.port) {
                                 // Backward compatibility: only read the port from older versions
-                                settings.value.port = serverStatus.port;
-                                console.log('[Vue App] Port loaded from server status:', serverStatus.port);
+                                settings.value.port = initialStatus.port;
+                                console.log('[Vue App] Port loaded from server status:', initialStatus.port);
                             }
                         } catch (error) {
                             console.error('[Vue App] Failed to get server status:', error);
@@ -324,7 +323,7 @@ module.exports = Editor.Panel.define({
                                     serverRunning.value = result.running;
                                     serverStatus.value = result.running ? 'Running' : 'Stopped';
                                     connectedClients.value = result.clients || 0;
-                                    httpUrl.value = result.running ? `http://localhost:${result.port}` : '';
+                                    httpUrl.value = result.running ? `http://localhost:${result.port}/mcp` : '';
                                     isProcessing.value = false;
                                 }
                             } catch (error) {
@@ -354,6 +353,8 @@ module.exports = Editor.Panel.define({
                         
                         // Methods
                         switchTab,
+                        updateBooleanSetting,
+                        updateNumberSetting,
                         toggleServer,
                         saveSettings,
                         copyUrl,

@@ -19,7 +19,7 @@
                     <ui-label slot="content" class="status-value" :class="statusClass">{{ serverStatus }}</ui-label>
                 </ui-prop>
                 <ui-prop v-if="serverRunning">
-                    <ui-label slot="label">Connections</ui-label>
+                    <ui-label slot="label">Recent MCP Clients</ui-label>
                     <ui-label slot="content">{{ connectedClients }}</ui-label>
                 </ui-prop>
             </div>
@@ -35,20 +35,20 @@
             <h3>Server Settings</h3>
             <ui-prop>
                 <ui-label slot="label">Port</ui-label>
-                <ui-num-input slot="content" v-model="settings.port" :min="1024" :max="65535" :step="1" :disabled="serverRunning">
+                <ui-num-input slot="content" :value="settings.port" @change="updateNumberSetting('port', $event)" :min="1024" :max="65535" :step="1" :disabled="serverRunning">
                 </ui-num-input>
             </ui-prop>
             <ui-prop>
                 <ui-label slot="label">Auto-start</ui-label>
-                <ui-checkbox slot="content" v-model="settings.autoStart"></ui-checkbox>
+                <ui-checkbox slot="content" :checked="settings.autoStart" @change="updateBooleanSetting('autoStart')"></ui-checkbox>
             </ui-prop>
             <ui-prop>
                 <ui-label slot="label">Debug Logging</ui-label>
-                <ui-checkbox slot="content" v-model="settings.debugLog"></ui-checkbox>
+                <ui-checkbox slot="content" :checked="settings.debugLog" @change="updateBooleanSetting('debugLog')"></ui-checkbox>
             </ui-prop>
             <ui-prop>
                 <ui-label slot="label">Max Connections</ui-label>
-                <ui-num-input slot="content" v-model="settings.maxConnections" :min="1" :max="100" :step="1">
+                <ui-num-input slot="content" :value="settings.maxConnections" @change="updateNumberSetting('maxConnections', $event)" :min="1" :max="100" :step="1">
                 </ui-num-input>
             </ui-prop>
         </section>
@@ -105,8 +105,8 @@
                         <div class="tool-items">
                             <div v-for="tool in getToolsByCategory(category)" :key="tool.name" class="tool-item">
                                 <ui-checkbox 
-                                    :value="tool.enabled"
-                                    @change="(event) => updateToolStatus(category, tool.name, event.target.checked)"
+                                    :checked="tool.enabled"
+                                    @change="updateToolStatus(category, tool.name, !tool.enabled)"
                                 ></ui-checkbox>
                                 <div class="tool-info">
                                     <div class="tool-name">{{ tool.name }}</div>
@@ -123,4 +123,3 @@
     </div>
 </div>
 
- 

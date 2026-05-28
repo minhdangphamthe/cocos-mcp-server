@@ -17,6 +17,8 @@ import { ReferenceImageTools } from './tools/reference-image-tools';
 import { AssetAdvancedTools } from './tools/asset-advanced-tools';
 import { ValidationTools } from './tools/validation-tools';
 
+const CLIENT_ACTIVITY_TIMEOUT_MS = 30_000;
+
 export class MCPServer {
     private settings: MCPServerSettings;
     private httpServer: http.Server | null = null;
@@ -147,6 +149,7 @@ export class MCPServer {
     }
 
     public getClients(): MCPClient[] {
+        this.pruneInactiveClients();
         return Array.from(this.clients.values());
     }
     public getAvailableTools(): ToolDefinition[] {
@@ -181,6 +184,7 @@ export class MCPServer {
         
         try {
             if (pathname === '/mcp' && req.method === 'POST') {
+                this.recordClientActivity(req);
                 await this.handleMCPRequest(req, res);
             } else if (pathname === '/health' && req.method === 'GET') {
                 res.writeHead(200);
@@ -241,6 +245,30 @@ export class MCPServer {
                 }));
             }
         });
+    }
+
+    private recordClientActivity(req: http.IncomingMessage): void {
+        this.pruneInactiveClients();
+
+        const userAgent = req.headers['user-agent'];
+        const clientKey = `${req.socket.remoteAddress || 'unknown'}|${userAgent || 'unknown'}`;
+        const existingClient = this.clients.get(clientKey);
+
+        this.clients.set(clientKey, {
+            id: existingClient?.id || uuidv4(),
+            lastActivity: new Date(),
+            userAgent
+        });
+    }
+
+    private pruneInactiveClients(): void {
+        const cutoffTime = Date.now() - CLIENT_ACTIVITY_TIMEOUT_MS;
+
+        for (const [key, client] of this.clients.entries()) {
+            if (client.lastActivity.getTime() < cutoffTime) {
+                this.clients.delete(key);
+            }
+        }
     }
 
     private async handleMessage(message: any): Promise<any> {
@@ -324,10 +352,12 @@ export class MCPServer {
     }
 
     public getStatus(): ServerStatus {
+        this.pruneInactiveClients();
+
         return {
             running: !!this.httpServer,
             port: this.settings.port,
-            clients: 0 // HTTP is stateless, no persistent clients
+            clients: this.clients.size
         };
     }
 
@@ -450,12 +480,5 @@ export class MCPServer {
 
     public updateSettings(settings: MCPServerSettings) {
         this.settings = settings;
-        if (this.httpServer) {
-            this.stop();
-            this.start();
-        }
     }
 }
-
-// HTTP transport doesn't need persistent connections
-// MCP over HTTP uses request-response pattern

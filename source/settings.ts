@@ -16,6 +16,10 @@ const DEFAULT_TOOL_MANAGER_SETTINGS: ToolManagerSettings = {
     maxConfigSlots: 5
 };
 
+type StoredServerSettings = Partial<MCPServerSettings> & {
+    debugLog?: boolean;
+};
+
 function getSettingsPath(): string {
     return path.join(Editor.Project.path, 'settings', 'mcp-server.json');
 }
@@ -31,25 +35,37 @@ function ensureSettingsDir(): void {
     }
 }
 
+function normalizeSettings(settings: StoredServerSettings): MCPServerSettings {
+    return {
+        port: settings.port ?? DEFAULT_SETTINGS.port,
+        autoStart: settings.autoStart ?? DEFAULT_SETTINGS.autoStart,
+        enableDebugLog: settings.enableDebugLog ?? settings.debugLog ?? DEFAULT_SETTINGS.enableDebugLog,
+        allowedOrigins: settings.allowedOrigins ?? DEFAULT_SETTINGS.allowedOrigins,
+        maxConnections: settings.maxConnections ?? DEFAULT_SETTINGS.maxConnections
+    };
+}
+
 export function readSettings(): MCPServerSettings {
     try {
         ensureSettingsDir();
         const settingsFile = getSettingsPath();
         if (fs.existsSync(settingsFile)) {
             const content = fs.readFileSync(settingsFile, 'utf8');
-            return { ...DEFAULT_SETTINGS, ...JSON.parse(content) };
+            return normalizeSettings(JSON.parse(content));
         }
     } catch (e) {
         console.error('Failed to read settings:', e);
     }
-    return DEFAULT_SETTINGS;
+    return normalizeSettings(DEFAULT_SETTINGS);
 }
 
-export function saveSettings(settings: MCPServerSettings): void {
+export function saveSettings(settings: StoredServerSettings): MCPServerSettings {
     try {
         ensureSettingsDir();
         const settingsFile = getSettingsPath();
-        fs.writeFileSync(settingsFile, JSON.stringify(settings, null, 2));
+        const normalizedSettings = normalizeSettings(settings);
+        fs.writeFileSync(settingsFile, JSON.stringify(normalizedSettings, null, 2));
+        return normalizedSettings;
     } catch (e) {
         console.error('Failed to save settings:', e);
         throw e;
@@ -100,4 +116,4 @@ export function importToolConfiguration(configJson: string): ToolConfiguration {
     }
 }
 
-export { DEFAULT_SETTINGS, DEFAULT_TOOL_MANAGER_SETTINGS };
+export { DEFAULT_SETTINGS, DEFAULT_TOOL_MANAGER_SETTINGS, normalizeSettings };
