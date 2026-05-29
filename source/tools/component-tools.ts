@@ -97,7 +97,7 @@ export class ComponentTools implements ToolExecutor {
                         },
                         propertyType: {
                             type: 'string',
-                            description: 'Property type - Must explicitly specify the property data type for correct value conversion and validation',
+                            description: 'Property type - Optional. When omitted, the server infers it from the target property metadata. You can still specify it explicitly for ambiguous cases or to override inference.',
                             enum: [
                                 'string', 'number', 'boolean', 'integer', 'float',
                                 'color', 'vec2', 'vec3', 'size',
@@ -143,7 +143,7 @@ export class ComponentTools implements ToolExecutor {
                                 '• stringArray: ["item1","item2"] (array of strings)'
                         }
                     },
-                    required: ['nodeUuid', 'componentType', 'property', 'propertyType', 'value']
+                    required: ['nodeUuid', 'componentType', 'property', 'value']
                 }
             },
             {
@@ -504,7 +504,7 @@ export class ComponentTools implements ToolExecutor {
         
         return new Promise(async (resolve) => {
             try {
-                console.log(`[ComponentTools] Setting ${componentType}.${property} (type: ${propertyType}) = ${JSON.stringify(value)} on node ${nodeUuid}`);
+                console.log(`[ComponentTools] Setting ${componentType}.${property} (type: ${propertyType ?? 'auto'}) = ${JSON.stringify(value)} on node ${nodeUuid}`);
                 
                 // Step 0: Detect if this is a node property, and if so, redirect to the corresponding node method
                 const nodeRedirectResult = await this.checkAndRedirectNodeProperties(args);
@@ -572,13 +572,23 @@ export class ComponentTools implements ToolExecutor {
                     });
                     return;
                 }
+
+                const resolvedPropertyType = propertyType || propertyInfo.type;
+                if (!resolvedPropertyType || ['unknown', 'object', 'array'].includes(resolvedPropertyType)) {
+                    resolve({
+                        success: false,
+                        error: `Could not infer property type for '${componentType}.${property}'`,
+                        instruction: `Please provide propertyType explicitly. Inferred type was '${propertyInfo.type || 'undefined'}'.`
+                    });
+                    return;
+                }
                 
                 // Step 4: Handle property values and apply the setting
                 const originalValue = propertyInfo.originalValue;
                 let processedValue: any;
                 
-                // Process property values based on the explicit propertyType
-                switch (propertyType) {
+                // Process property values using the explicit propertyType when provided, otherwise the inferred one.
+                switch (resolvedPropertyType) {
                     case 'string':
                         processedValue = String(value);
                         break;
@@ -658,7 +668,7 @@ export class ComponentTools implements ToolExecutor {
                         if (typeof value === 'string') {
                             processedValue = { uuid: value };
                         } else {
-                            throw new Error(`${propertyType} value must be a string UUID`);
+                            throw new Error(`${resolvedPropertyType} value must be a string UUID`);
                         }
                         break;
                     case 'nodeArray':
@@ -707,12 +717,12 @@ export class ComponentTools implements ToolExecutor {
                         }
                         break;
                     default:
-                        throw new Error(`Unsupported property type: ${propertyType}`);
+                        throw new Error(`Unsupported property type: ${resolvedPropertyType}`);
                 }
                 
-                console.log(`[ComponentTools] Converting value: ${JSON.stringify(value)} -> ${JSON.stringify(processedValue)} (type: ${propertyType})`);
-                console.log(`[ComponentTools] Property analysis result: propertyInfo.type="${propertyInfo.type}", propertyType="${propertyType}"`);
-                console.log(`[ComponentTools] Will use color special handling: ${propertyType === 'color' && processedValue && typeof processedValue === 'object'}`);
+                console.log(`[ComponentTools] Converting value: ${JSON.stringify(value)} -> ${JSON.stringify(processedValue)} (type: ${resolvedPropertyType})`);
+                console.log(`[ComponentTools] Property analysis result: propertyInfo.type="${propertyInfo.type}", propertyType="${propertyType}", resolvedPropertyType="${resolvedPropertyType}"`);
+                console.log(`[ComponentTools] Will use color special handling: ${resolvedPropertyType === 'color' && processedValue && typeof processedValue === 'object'}`);
                 
                 // Actual expected value for verification, with special handling for component references
                 let actualExpectedValue = processedValue;
@@ -750,13 +760,13 @@ export class ComponentTools implements ToolExecutor {
                 let propertyPath = `__comps__.${rawComponentIndex}.${property}`;
                 
                 // Special handling for asset properties
-                if (propertyType === 'asset' || propertyType === 'spriteFrame' || propertyType === 'prefab' || 
-                    (propertyInfo.type === 'asset' && propertyType === 'string')) {
+                if (resolvedPropertyType === 'asset' || resolvedPropertyType === 'spriteFrame' || resolvedPropertyType === 'prefab' || 
+                    (propertyInfo.type === 'asset' && resolvedPropertyType === 'string')) {
                     
                     console.log(`[ComponentTools] Setting asset reference:`, {
                         value: processedValue,
                         property: property,
-                        propertyType: propertyType,
+                        propertyType: resolvedPropertyType,
                         path: propertyPath
                     });
                     
@@ -770,7 +780,7 @@ export class ComponentTools implements ToolExecutor {
                         assetType = 'cc.Font';
                     } else if (property.toLowerCase().includes('clip')) {
                         assetType = 'cc.AudioClip';
-                    } else if (propertyType === 'prefab') {
+                    } else if (resolvedPropertyType === 'prefab') {
                         assetType = 'cc.Prefab';
                     }
                     
@@ -818,7 +828,7 @@ export class ComponentTools implements ToolExecutor {
                         path: `__comps__.${rawComponentIndex}.anchorY`,
                         dump: { value: anchorY }
                     });
-                } else if (propertyType === 'color' && processedValue && typeof processedValue === 'object') {
+                } else if (resolvedPropertyType === 'color' && processedValue && typeof processedValue === 'object') {
                     // Special handling for color properties to ensure RGBA values are correct
                     // Cocos Creator color values range from 0 to 255
                     const colorValue = {
@@ -838,7 +848,7 @@ export class ComponentTools implements ToolExecutor {
                             type: 'cc.Color'
                         }
                     });
-                } else if (propertyType === 'vec3' && processedValue && typeof processedValue === 'object') {
+                } else if (resolvedPropertyType === 'vec3' && processedValue && typeof processedValue === 'object') {
                     // Special handling for Vec3 properties
                     const vec3Value = {
                         x: Number(processedValue.x) || 0,
@@ -854,7 +864,7 @@ export class ComponentTools implements ToolExecutor {
                             type: 'cc.Vec3'
                         }
                     });
-                } else if (propertyType === 'vec2' && processedValue && typeof processedValue === 'object') {
+                } else if (resolvedPropertyType === 'vec2' && processedValue && typeof processedValue === 'object') {
                     // Special handling for Vec2 properties
                     const vec2Value = {
                         x: Number(processedValue.x) || 0,
@@ -869,7 +879,7 @@ export class ComponentTools implements ToolExecutor {
                             type: 'cc.Vec2'
                         }
                     });
-                } else if (propertyType === 'size' && processedValue && typeof processedValue === 'object') {
+                } else if (resolvedPropertyType === 'size' && processedValue && typeof processedValue === 'object') {
                     // Special handling for Size properties
                     const sizeValue = {
                         width: Number(processedValue.width) || 0,
@@ -884,7 +894,7 @@ export class ComponentTools implements ToolExecutor {
                             type: 'cc.Size'
                         }
                     });
-                } else if (propertyType === 'node' && processedValue && typeof processedValue === 'object' && 'uuid' in processedValue) {
+                } else if (resolvedPropertyType === 'node' && processedValue && typeof processedValue === 'object' && 'uuid' in processedValue) {
                     // Special handling for node references
                     console.log(`[ComponentTools] Setting node reference with UUID: ${processedValue.uuid}`);
                     await Editor.Message.request('scene', 'set-property', {
@@ -895,7 +905,7 @@ export class ComponentTools implements ToolExecutor {
                             type: 'cc.Node'
                         }
                     });
-                } else if (propertyType === 'component' && typeof processedValue === 'string') {
+                } else if (resolvedPropertyType === 'component' && typeof processedValue === 'string') {
                     // Special handling for component references: find the component __id__ via the node UUID
                     const targetNodeUuid = processedValue;
                     console.log(`[ComponentTools] Setting component reference - finding component on node: ${targetNodeUuid}`);
@@ -1017,7 +1027,7 @@ export class ComponentTools implements ToolExecutor {
                         console.error(`[ComponentTools] Error setting component reference:`, error);
                         throw error;
                     }
-                } else if (propertyType === 'nodeArray' && Array.isArray(processedValue)) {
+                } else if (resolvedPropertyType === 'nodeArray' && Array.isArray(processedValue)) {
                     // Special handling for node arrays - keep the preprocessed format
                     console.log(`[ComponentTools] Setting node array:`, processedValue);
                     
@@ -1028,7 +1038,7 @@ export class ComponentTools implements ToolExecutor {
                             value: processedValue  // Keep the [{uuid: "..."}, {uuid: "..."}] format
                         }
                     });
-                } else if (propertyType === 'colorArray' && Array.isArray(processedValue)) {
+                } else if (resolvedPropertyType === 'colorArray' && Array.isArray(processedValue)) {
                     // Special handling for color arrays
                     const colorArrayValue = processedValue.map((item: any) => {
                         if (item && typeof item === 'object' && 'r' in item) {
